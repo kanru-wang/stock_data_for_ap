@@ -1,0 +1,15 @@
+---
+title: "stock_data"
+output: html_notebook
+---
+
+```{r}
+install.packages("fst")
+library(fst)
+```
+
+```{r}
+monthly_world_val = fst("C:/Users/wangka3/Desktop/learning/R_exercise/monthly_world_val.fst")
+daily_US_prices = fst("C:/Users/wangka3/Desktop/learning/R_exercise/daily_US_prices.fst")
+```
+
