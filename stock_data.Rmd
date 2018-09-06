@@ -4,12 +4,102 @@ output: html_notebook
 ---
 
 ```{r}
-install.packages("fst")
+#install.packages("fst")
 library(fst)
+library(ggplot2)
+library(data.table)
+library(magrittr)
+library(tidyverse)
 ```
 
 ```{r}
 monthly_world_val = fst("C:/Users/wangka3/Desktop/learning/R_exercise/monthly_world_val.fst")
 daily_US_prices = fst("C:/Users/wangka3/Desktop/learning/R_exercise/daily_US_prices.fst")
 ```
+
+```{r}
+#table(monthly_world_val[['COUNTRY']])
+```
+
+No missing value.
+```{r}
+#summary(daily_US_prices[['DATE']])
+#summary(daily_US_prices[['MARKET_CAP']])
+#summary(daily_US_prices[['PRICE']])
+#summary(monthly_world_val[['DATE']])
+#summary(monthly_world_val[['EV']])
+#summary(monthly_world_val[['SALES']])
+```
+
+
+Aggregated Enterprise Value to Aggregated Sales
+Median Enterprise Value to Sales
+```{r}
+EVTS_RAW = data.table(
+  DATE = monthly_world_val[['DATE']],
+  TICKER = monthly_world_val[['TICKER']],
+  COUNTRY = monthly_world_val[['COUNTRY']],
+  SECTOR = monthly_world_val[['SECTOR']],
+  EV = monthly_world_val[['EV']],
+  SALES = monthly_world_val[['SALES']]
+)
+```
+
+```{r}
+EVTS = EVTS_RAW %>%
+  mutate(EVTS = EV/SALES,
+         US_vs_Others = ifelse(.$COUNTRY == "United States", "U.S.", "Others"),
+         YEAR = format(as.Date(.$DATE, format="%Y-%m-%d"),"%Y")) %>%
+  select(TICKER, US_vs_Others, SECTOR, YEAR, EVTS) %>%
+  filter(!is.na(SECTOR)) %>% 
+  filter(SECTOR != "EXCLUDE") %>% 
+  group_by(TICKER, US_vs_Others, SECTOR, YEAR) %>% 
+  summarize(ticker_yearly_median_EVTS = median(EVTS)) %>% 
+  filter(ticker_yearly_median_EVTS > - 5,  # Exclude extreme values
+         ticker_yearly_median_EVTS < 150)
+```
+
+quantile(EVTS$ticker_yearly_median_EVTS, c(0.005, 0.01, 0.02, 0.98, 0.99, 0.995), na.rm = TRUE)
+
+Yearly EVTS by sector, US vs. the rest of the world.
+```{r fig1, fig.height = 30, fig.width = 12}
+ggplot(EVTS, aes(x = YEAR, y = ticker_yearly_median_EVTS)) +
+  geom_point(alpha = 0.2, aes(colour = factor(US_vs_Others))) +
+  #geom_smooth(formula = y ~ poly(x, 30)) +
+  geom_smooth(size = 3) +
+  facet_wrap( ~ SECTOR, ncol = 3) +
+  theme(axis.text.x = element_text(angle = 90, size = 10),
+        legend.position="top")
+```
+
+
+```{r fig2, fig.height = 30, fig.width = 12}
+ggplot(EVTS, aes(x = YEAR, y = ticker_yearly_median_EVTS,
+                 colour = factor(US_vs_Others),
+                 group = factor(US_vs_Others))) +
+  geom_point(alpha = 0.2) +
+  #geom_smooth(formula = y ~ poly(x, 30)) +
+  geom_smooth(alpha = 0.2) +
+  facet_wrap( ~ SECTOR, ncol = 3) +
+  theme(axis.text.x = element_text(angle = 90, size = 10),
+        legend.position="top")
+```
+
+```{r fig3, fig.height = 30, fig.width = 12}
+ggplot(EVTS, aes(x = YEAR, y = ticker_yearly_median_EVTS,
+                 colour = factor(US_vs_Others),
+                 group = factor(US_vs_Others))) +
+  geom_point(alpha = 0.2) +
+  stat_summary(aes(y = ticker_yearly_median_EVTS#,
+                   #group = factor(US_vs_Others)
+                   ), 
+               fun.y = median, geom = "line"#, 
+               #group = factor(US_vs_Others)
+               ) +
+  facet_wrap( ~ SECTOR, ncol = 3) +
+  theme(axis.text.x = element_text(angle = 90, size = 10),
+        legend.position="top")
+```
+
+
 
