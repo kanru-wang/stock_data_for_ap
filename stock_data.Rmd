@@ -10,6 +10,7 @@ library(ggplot2)
 library(data.table)
 library(magrittr)
 library(tidyverse)
+library(readr)
 ```
 
 ```{r}
@@ -17,23 +18,14 @@ monthly_world_val = fst("C:/Users/wangka3/Desktop/learning/R_exercise/monthly_wo
 daily_US_prices = fst("C:/Users/wangka3/Desktop/learning/R_exercise/daily_US_prices.fst")
 ```
 
-```{r}
-#table(monthly_world_val[['COUNTRY']])
-```
+# Enterprise Value to Sales
 
-No missing value.
-```{r}
-#summary(daily_US_prices[['DATE']])
-#summary(daily_US_prices[['MARKET_CAP']])
-#summary(daily_US_prices[['PRICE']])
-#summary(monthly_world_val[['DATE']])
-#summary(monthly_world_val[['EV']])
-#summary(monthly_world_val[['SALES']])
-```
+* Calculate each company's yearly median enterprise value to sales ratio, displayed as a point.
+* Divide companies into two groups: U.S. and the rest of the world.
+* Display by sector, by year.
+* Each line represents the median of companies' yearly median enterprise value to sales ratio.
+* Zoomed to y axis range (-1, 40), but points outside the graph and in range (-5, 2000) are all used to calculate the positions of lines.  
 
-
-Aggregated Enterprise Value to Aggregated Sales
-Median Enterprise Value to Sales
 ```{r}
 EVTS_RAW = data.table(
   DATE = monthly_world_val[['DATE']],
@@ -51,55 +43,61 @@ EVTS = EVTS_RAW %>%
          US_vs_Others = ifelse(.$COUNTRY == "United States", "U.S.", "Others"),
          YEAR = format(as.Date(.$DATE, format="%Y-%m-%d"),"%Y")) %>%
   select(TICKER, US_vs_Others, SECTOR, YEAR, EVTS) %>%
-  filter(!is.na(SECTOR)) %>% 
-  filter(SECTOR != "EXCLUDE") %>% 
+  filter(!is.na(SECTOR)) %>%  # Exclude na
+  filter(SECTOR != "EXCLUDE") %>%  # Exclude "EXCLUDE"
   group_by(TICKER, US_vs_Others, SECTOR, YEAR) %>% 
   summarize(ticker_yearly_median_EVTS = median(EVTS)) %>% 
   filter(ticker_yearly_median_EVTS > - 5,  # Exclude extreme values
-         ticker_yearly_median_EVTS < 150)
+         ticker_yearly_median_EVTS < 2000)
+
+#quantile(EVTS$ticker_yearly_median_EVTS, c(0.005, 0.01, 0.99, 0.995), na.rm = TRUE)
 ```
 
-quantile(EVTS$ticker_yearly_median_EVTS, c(0.005, 0.01, 0.02, 0.98, 0.99, 0.995), na.rm = TRUE)
+* US companies' enterprise value to sales ratios seem to be usually higher.
+* Year 2000 Internet Bubble can be seen.
+* Some sectors have much higher enterprise value to sales ratios.
 
-Yearly EVTS by sector, US vs. the rest of the world.
-```{r fig1, fig.height = 30, fig.width = 12}
-ggplot(EVTS, aes(x = YEAR, y = ticker_yearly_median_EVTS)) +
-  geom_point(alpha = 0.2, aes(colour = factor(US_vs_Others))) +
-  #geom_smooth(formula = y ~ poly(x, 30)) +
-  geom_smooth(size = 3) +
-  facet_wrap( ~ SECTOR, ncol = 3) +
-  theme(axis.text.x = element_text(angle = 90, size = 10),
-        legend.position="top")
-```
-
-
-```{r fig2, fig.height = 30, fig.width = 12}
+```{r fig1, fig.height = 30, fig.width = 14}
 ggplot(EVTS, aes(x = YEAR, y = ticker_yearly_median_EVTS,
                  colour = factor(US_vs_Others),
                  group = factor(US_vs_Others))) +
   geom_point(alpha = 0.2) +
-  #geom_smooth(formula = y ~ poly(x, 30)) +
-  geom_smooth(alpha = 0.2) +
+  stat_summary(aes(y = ticker_yearly_median_EVTS), 
+               fun.y = median, geom = "line", size = 1.5, alpha = 0.7) +
+  coord_cartesian(ylim = c(-1, 40)) +  # Zoom in  
   facet_wrap( ~ SECTOR, ncol = 3) +
   theme(axis.text.x = element_text(angle = 90, size = 10),
-        legend.position="top")
-```
-
-```{r fig3, fig.height = 30, fig.width = 12}
-ggplot(EVTS, aes(x = YEAR, y = ticker_yearly_median_EVTS,
-                 colour = factor(US_vs_Others),
-                 group = factor(US_vs_Others))) +
-  geom_point(alpha = 0.2) +
-  stat_summary(aes(y = ticker_yearly_median_EVTS#,
-                   #group = factor(US_vs_Others)
-                   ), 
-               fun.y = median, geom = "line"#, 
-               #group = factor(US_vs_Others)
-               ) +
-  facet_wrap( ~ SECTOR, ncol = 3) +
-  theme(axis.text.x = element_text(angle = 90, size = 10),
-        legend.position="top")
+        legend.position="top") +
+  ggtitle("Yearly EVTS by sector, US vs. the rest of the world") 
 ```
 
 
+# Create a daily total return price index for the largest 500 stocks (at each point in time) listed on the US market 
+```{r}
+INDEX_RAW = data.table(
+  DATE = daily_US_prices[['DATE']],
+  MARKET_CAP = daily_US_prices[['MARKET_CAP']]
+)
+```
+
+```{r}
+INDEX = INDEX_RAW %>% 
+  group_by(DATE) %>% 
+  top_n(n = 500, wt = MARKET_CAP) %>% 
+  summarize(sum_market_cap = sum(MARKET_CAP))
+```
+
+```{r}
+plot(sum_market_cap ~ DATE, INDEX, type = "l")
+```
+
+### Import S&P 500 Total Return Index downloaded from Yahoo Finance
+```{r}
+SP500TR <- read_csv("C:/Users/wangka3/Desktop/learning/R_exercise/SP500TR.csv")
+```
+
+```{r}
+index_divisor = INDEX$sum_market_cap[1] / SP500TR$`Adj Close`[1]
+INDEX_aligned_with_SP500TR = INDEX %>% mutate(index = sum_market_cap / index_divisor)
+```
 
