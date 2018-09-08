@@ -76,28 +76,78 @@ ggplot(EVTS, aes(x = YEAR, y = ticker_yearly_median_EVTS,
 ```{r}
 INDEX_RAW = data.table(
   DATE = daily_US_prices[['DATE']],
-  MARKET_CAP = daily_US_prices[['MARKET_CAP']]
+  MARKET_CAP = daily_US_prices[['MARKET_CAP']],
+  TICKER = daily_US_prices[['TICKER']],
+  PRICE =  daily_US_prices[['PRICE']]
 )
 ```
 
+### Option 1: creating an index without including dividends, i.e. sum(market cap for top 500 companies)
 ```{r}
-INDEX = INDEX_RAW %>% 
+INDEX_1 = INDEX_RAW %>% 
   group_by(DATE) %>% 
   top_n(n = 500, wt = MARKET_CAP) %>% 
   summarize(sum_market_cap = sum(MARKET_CAP))
+
+```
+
+### Option 2: creating a Total Return index, i.e. sum(volume of issued stocks x adj price, for top 500 companies)
+
+#### We need to get the volume of issued stocks when a ticker first appeared in the dataset
+
+```{r}
+ticker_first_appear = INDEX_RAW %>% 
+  group_by(TICKER) %>% 
+  summarize(DATE = min(DATE)) # first_appear_date
 ```
 
 ```{r}
-plot(sum_market_cap ~ DATE, INDEX, type = "l")
+number_of_stocks_beginning = 
+  merge(x = ticker_first_appear, y = INDEX_RAW,
+        by = c("TICKER", "DATE"), all.x = TRUE) %>% 
+  mutate(number_of_stocks = MARKET_CAP / PRICE) %>% 
+  select(TICKER, number_of_stocks)
 ```
 
-### Import S&P 500 Total Return Index downloaded from Yahoo Finance
+#### Daily largest 500 stocks are still determined by Market Cap
+
 ```{r}
-SP500TR <- read_csv("C:/Users/wangka3/Desktop/learning/R_exercise/SP500TR.csv")
+INDEX_2 = merge(x = INDEX_RAW, y = number_of_stocks_beginning,
+                by = "TICKER", all.x = TRUE) %>% 
+  mutate(market_cap_plus_dividends = PRICE * number_of_stocks) %>% 
+  group_by(DATE) %>% 
+  top_n(n = 500, wt = MARKET_CAP) %>% 
+  summarize(sum_market_cap_plus_dividends = sum(market_cap_plus_dividends))
+```
+
+#### Import S&P 500 Total Return Index downloaded from Yahoo Finance
+```{r}
+SP500TR <- read_csv("C:/Users/wangka3/Desktop/learning/R_exercise/SP500TR.csv", 
+    col_types = cols(Date = col_date(format = "%d/%m/%Y")))
+```
+
+#### Apply index divisor to our index in order to align our index with S&P 500 Total Return
+```{r}
+index_divisor_1 = INDEX_1$sum_market_cap[1] / SP500TR$`Adj Close`[1]
+INDEX_1_aligned_with_SP500TR = INDEX_1 %>% mutate(index = sum_market_cap / index_divisor_1)
 ```
 
 ```{r}
-index_divisor = INDEX$sum_market_cap[1] / SP500TR$`Adj Close`[1]
-INDEX_aligned_with_SP500TR = INDEX %>% mutate(index = sum_market_cap / index_divisor)
+index_divisor_2 = INDEX_2$sum_market_cap_plus_dividends[1] / SP500TR$`Adj Close`[1]
+INDEX_2_aligned_with_SP500TR = INDEX_2 %>% 
+  mutate(index = sum_market_cap_plus_dividends / index_divisor_2)
 ```
 
+#### Plot
+```{r}
+ggplot() + 
+  geom_line(data = INDEX_1_aligned_with_SP500TR, 
+            aes(x = DATE, y = index), color = "red") +
+  geom_line(data = INDEX_2_aligned_with_SP500TR, 
+            aes(x = DATE, y = index), color = "blue") +
+  geom_line(data = SP500TR, 
+            aes(x = Date, y = `Adj Close`), color = "purple") +
+  xlab('Date') +
+  ylab('Index') +
+  ggtitle(" Red line represents Option 1.\n Blue line represents Option 2.\n Purple line represents S&P 500 TR.") 
+```
