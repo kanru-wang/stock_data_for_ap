@@ -11,6 +11,8 @@ library(data.table)
 library(magrittr)
 library(tidyverse)
 library(readr)
+library(TTR)
+library(zoo)
 ```
 
 ```{r}
@@ -91,7 +93,7 @@ INDEX_1 = INDEX_RAW %>%
 
 ```
 
-### Option 2: creating a Total Return index, i.e. sum(volume of issued stocks x adj price, for top 500 companies)
+### Option 2: creating a Total Return index, i.e. sum(initial volume of issued stocks x adj price, for top 500 companies)
 
 #### We need to get the volume of issued stocks when a ticker first appeared in the dataset
 
@@ -123,31 +125,127 @@ INDEX_2 = merge(x = INDEX_RAW, y = number_of_stocks_beginning,
 #### Import S&P 500 Total Return Index downloaded from Yahoo Finance
 ```{r}
 SP500TR <- read_csv("C:/Users/wangka3/Desktop/learning/R_exercise/SP500TR.csv", 
-    col_types = cols(Date = col_date(format = "%d/%m/%Y")))
+    col_types = cols(DATE = col_date(format = "%d/%m/%Y")))
+colnames(SP500TR)[2] = "SP500"
 ```
 
 #### Apply index divisor to our index in order to align our index with S&P 500 Total Return
 ```{r}
-index_divisor_1 = INDEX_1$sum_market_cap[1] / SP500TR$`Adj Close`[1]
-INDEX_1_aligned_with_SP500TR = INDEX_1 %>% mutate(index = sum_market_cap / index_divisor_1)
+index_divisor_1 = INDEX_1$sum_market_cap[1] / SP500TR$SP500[1]
+INDEX_1_aligned_with_SP500TR = INDEX_1 %>% mutate(index_1 = sum_market_cap / index_divisor_1)
 ```
 
 ```{r}
-index_divisor_2 = INDEX_2$sum_market_cap_plus_dividends[1] / SP500TR$`Adj Close`[1]
+index_divisor_2 = INDEX_2$sum_market_cap_plus_dividends[1] / SP500TR$SP500[1]
 INDEX_2_aligned_with_SP500TR = INDEX_2 %>% 
-  mutate(index = sum_market_cap_plus_dividends / index_divisor_2)
+  mutate(index_2 = sum_market_cap_plus_dividends / index_divisor_2)
 ```
 
 #### Plot
 ```{r}
 ggplot() + 
   geom_line(data = INDEX_1_aligned_with_SP500TR, 
-            aes(x = DATE, y = index), color = "red") +
+            aes(x = DATE, y = index_1), color = "red") +
   geom_line(data = INDEX_2_aligned_with_SP500TR, 
-            aes(x = DATE, y = index), color = "blue") +
+            aes(x = DATE, y = index_2), color = "blue") +
   geom_line(data = SP500TR, 
-            aes(x = Date, y = `Adj Close`), color = "purple") +
+            aes(x = DATE, y = SP500), color = "purple") +
   xlab('Date') +
   ylab('Index') +
   ggtitle(" Red line represents Option 1.\n Blue line represents Option 2.\n Purple line represents S&P 500 TR.") 
 ```
+
+#### Option 2 is much more similar to S&P 500 TR than Option 1 is. Dividend is important.
+
+### Calculate the (annualized and compound) 3Y rolling return of the index and plot against the (annualized and compound) 3Y rolling return of the S&P 500, for each day.
+
+#### Expand to include non-trading days and fill non-trading days with the latest previous value. 
+```{r}
+full_dates = as.data.table(seq(as.Date("1994-12-30"), as.Date("2018-07-19"), by="days"))
+colnames(full_dates) = "DATE"
+```
+
+```{r}
+expanded_to_non_trading_days_then_filled = full_dates %>%                        # Single column of dates
+  merge(x = ., y = INDEX_1_aligned_with_SP500TR, by = "DATE", all.x = TRUE) %>%  # Merge Option 1
+  merge(x = ., y = INDEX_2_aligned_with_SP500TR, by = "DATE", all.x = TRUE) %>%  # Merge Option 2
+  merge(x = ., y = SP500TR, by = "DATE", all.x = TRUE) %>%                       # Merge S&P 500 TR
+  mutate(index_1 = na.locf(.$index_1),  # Fill non-trading days with the latest previous value
+         index_2 = na.locf(.$index_2),
+         SP500 = na.locf(.$SP500)) %>% 
+  select(DATE, index_1, index_2, SP500)
+```
+
+#### Using the formula: index_today = index_3y_ago_today * (1 + x) ** 3 
+```{r}
+annualised_and_compound_3y_rolling_return = expanded_to_non_trading_days_then_filled %>% 
+  mutate(index_1 = ROC(.$index_1, n = 365 * 3, type = "discrete"),
+         index_2 = ROC(.$index_2, n = 365 * 3, type = "discrete"),
+         SP500   = ROC(.$SP500, n = 365 * 3, type = "discrete")) %>% 
+  mutate(index_1 = (.$index_1 + 1) ** (1 / 3) - 1,
+         index_2 = (.$index_2 + 1) ** (1 / 3) - 1,
+         SP500   = (.$SP500 + 1) ** (1 / 3) - 1)
+```
+
+#### Plot
+```{r}
+ggplot() + 
+  geom_line(data = annualised_and_compound_3y_rolling_return, 
+            aes(x = DATE, y = index_1), color = "red") +
+  geom_line(data = annualised_and_compound_3y_rolling_return, 
+            aes(x = DATE, y = index_2), color = "blue") +
+  geom_line(data = annualised_and_compound_3y_rolling_return, 
+            aes(x = DATE, y = SP500), color = "purple") +
+  xlab('Date') +
+  ylab('annualised_and_compound_3y_rolling_return') +
+  ggtitle(" Red line represents Option 1.\n Blue line represents Option 2.\n Purple line represents S&P 500 TR.") 
+```
+
+### Summary table
+
+Index|Start Date |Start Date Value|End Date|End Date Value|Cumulative Total Return|Cumulative Total Return p.a.|Annualised Volatility of Daily Returns
+---------|-----------|-------|-----------|--------|-------|--------|-----------
+Option 1 |1994-12-30 |575.71 |2018-07-19 |3990.03 |593.1% |0.0856% |18.38%
+Option 2 |1994-12-30 |575.71 |2018-07-19 |5648.23 |881.1% |0.1017% |17.55%
+SP500 TR |1994-12-30 |575.71 |2018-07-19 |5525.51 |859.8% |0.1007% |18.53%
+ 
+#### See below for calculation details of the table
+
+#### Cumulative Total Return
+```{r}
+(cumu_total_return_index_1 = 
+  tail(INDEX_1_aligned_with_SP500TR$index_1, 1) / head(INDEX_1_aligned_with_SP500TR$index_1, 1) - 1)
+(cumu_total_return_index_2 = 
+  tail(INDEX_2_aligned_with_SP500TR$index_2, 1) / head(INDEX_2_aligned_with_SP500TR$index_2, 1) - 1)
+(cumu_total_return_SP500TR = 
+  tail(SP500TR$SP500, 1) / head(SP500TR$SP500, 1) - 1)
+```
+
+#### Cumulative Total Return p.a.
+```{r}
+horizon = as.numeric(tail(INDEX_RAW$DATE, 1) - head(INDEX_RAW$DATE, 1)) / 365
+```
+
+```{r}
+(cumu_total_return_index_1_pa = (cumu_total_return_index_1 + 1) ** (1 / horizon) - 1)
+(cumu_total_return_index_2_pa = (cumu_total_return_index_2 + 1) ** (1 / horizon) - 1)
+(cumu_total_return_SP500TR_pa = (cumu_total_return_SP500TR + 1) ** (1 / horizon) - 1)
+```
+
+#### Annualised Volatility of Daily Returns
+```{r}
+annualised_volatility_of_daily_returns = function(index) {
+  daily_return = ROC(index, n = 1, na.pad = FALSE, type = "discrete")      # Get daily change
+  daily_return_excluded_non_trading_days = daily_return[daily_return != 0] # Exclude non-trading days whose change is 0
+  return(sd(daily_return_excluded_non_trading_days) * ((252) ** 0.5))      # 252 trading days per year
+}
+```
+
+```{r}
+annualised_volatility_of_daily_returns(INDEX_1_aligned_with_SP500TR$index_1)
+annualised_volatility_of_daily_returns(INDEX_2_aligned_with_SP500TR$index_2)
+annualised_volatility_of_daily_returns(SP500TR$SP500)
+```
+
+# Chart the 30d average annualised standard deviation of daily returns for all US stocks in the top quintile of market capitalisation (at each point in time). Notice that the context is still 
+
