@@ -56,9 +56,13 @@ EVTS = EVTS_RAW %>%
 #quantile(EVTS$ticker_yearly_median_EVTS, c(0.005, 0.01, 0.99, 0.995), na.rm = TRUE)
 ```
 
+<br />
+<br />
+
 * US companies' enterprise value to sales ratios seem to be usually higher.
 * Year 2000 Internet Bubble can be seen.
 * Some sectors have much higher enterprise value to sales ratios.
+* Blue dots represent U.S. and red dots represent the rest of the world.
 
 ```{r fig1, fig.height = 30, fig.width = 14}
 ggplot(EVTS, aes(x = YEAR, y = ticker_yearly_median_EVTS,
@@ -74,6 +78,9 @@ ggplot(EVTS, aes(x = YEAR, y = ticker_yearly_median_EVTS,
   ggtitle("Yearly EVTS by sector, US vs. the rest of the world") 
 ```
 
+<br />
+<br />
+<br />
 
 # Create a daily total return price index for the largest 500 stocks (at each point in time) listed on the US market. 
 ```{r}
@@ -85,6 +92,9 @@ INDEX_RAW = data.table(
 )
 ```
 
+<br />
+<br />
+
 ### Option 1: creating an index without including dividends, i.e. sum(market cap for top 500 companies)
 ```{r}
 INDEX_1 = INDEX_RAW %>% 
@@ -94,7 +104,12 @@ INDEX_1 = INDEX_RAW %>%
 
 ```
 
+<br />
+<br />
+
 ### Option 2: creating a Total Return index, i.e. sum(initial volume of issued stocks x adj price, for top 500 companies)
+
+<br />
 
 #### We need to get the volume of issued stocks when a ticker first appeared in the dataset.
 
@@ -105,23 +120,29 @@ ticker_first_appear = INDEX_RAW %>%
 ```
 
 ```{r}
-number_of_stocks_beginning = 
+volume_of_stocks_beginning = 
   merge(x = ticker_first_appear, y = INDEX_RAW,
         by = c("TICKER", "DATE"), all.x = TRUE) %>% 
-  mutate(number_of_stocks = MARKET_CAP / PRICE) %>% 
-  select(TICKER, number_of_stocks)
+  mutate(volume_of_stocks = MARKET_CAP / PRICE) %>% 
+  select(TICKER, volume_of_stocks)
 ```
+
+<br />
+<br />
 
 #### Daily largest 500 stocks are still determined by Market Cap.
 
 ```{r}
-INDEX_2 = merge(x = INDEX_RAW, y = number_of_stocks_beginning,
+INDEX_2 = merge(x = INDEX_RAW, y = volume_of_stocks_beginning,
                 by = "TICKER", all.x = TRUE) %>% 
-  mutate(market_cap_plus_dividends = PRICE * number_of_stocks) %>% 
+  mutate(market_cap_plus_dividends = PRICE * volume_of_stocks) %>% 
   group_by(DATE) %>% 
   top_n(n = 500, wt = MARKET_CAP) %>% 
   summarize(sum_market_cap_plus_dividends = sum(market_cap_plus_dividends))
 ```
+
+<br />
+<br />
 
 #### Import S&P 500 Total Return Index downloaded from Yahoo Finance.
 ```{r}
@@ -129,6 +150,9 @@ SP500TR <- read_csv("C:/Users/wangka3/Desktop/learning/R_exercise/SP500TR.csv",
     col_types = cols(DATE = col_date(format = "%d/%m/%Y")))
 colnames(SP500TR)[2] = "SP500"
 ```
+
+<br />
+<br />
 
 #### Apply index divisor to our index in order to align our index with S&P 500 Total Return.
 ```{r}
@@ -141,6 +165,9 @@ index_divisor_2 = INDEX_2$sum_market_cap_plus_dividends[1] / SP500TR$SP500[1]
 INDEX_2_aligned_with_SP500TR = INDEX_2 %>% 
   mutate(index_2 = sum_market_cap_plus_dividends / index_divisor_2)
 ```
+
+<br />
+<br />
 
 #### Plot
 ```{r}
@@ -158,7 +185,13 @@ ggplot() +
 
 #### Option 2 is much more similar to S&P 500 TR than Option 1 is. Dividend is important.
 
+<br />
+<br />
+<br />
+
 ### Calculate the (annualized and compound) 3Y rolling return of the index and plot against the (annualized and compound) 3Y rolling return of the S&P 500, for each day.
+
+<br />
 
 #### Expand to include non-trading days and fill non-trading days with the latest previous value. 
 ```{r}
@@ -177,6 +210,9 @@ expanded_to_non_trading_days_then_filled = full_dates %>%                       
   select(DATE, index_1, index_2, SP500)
 ```
 
+<br />
+<br />
+
 #### Using the formula: index_today = index_3y_ago_today * (1 + x) ** 3 
 ```{r}
 annualised_and_compound_3y_rolling_return = expanded_to_non_trading_days_then_filled %>% 
@@ -187,6 +223,9 @@ annualised_and_compound_3y_rolling_return = expanded_to_non_trading_days_then_fi
          index_2 = (.$index_2 + 1) ** (1 / 3) - 1,
          SP500   = (.$SP500 + 1) ** (1 / 3) - 1)
 ```
+
+<br />
+<br />
 
 #### Plot
 ```{r}
@@ -202,15 +241,22 @@ ggplot() +
   ggtitle(" Red line represents Option 1.\n Blue line represents Option 2.\n Purple line represents S&P 500 TR.") 
 ```
 
+<br />
+<br />
+<br />
+
 ### Summary table
 
-Index|Start Date |Start Date Value|End Date|End Date Value|Cumulative Total Return|Cumulative Total Return p.a.|Annualised Volatility of Daily Returns
+Index|Start Date |Start Date Value|End Date|End Date Value|Cumulative Total Return|Cumulative Total Return p.a.|Annualized Volatility of Daily Returns
 ---------|-----------|-------|-----------|--------|-------|--------|-----------
 Option 1 |1994-12-30 |575.71 |2018-07-19 |3990.03 |593.1% |0.0856% |18.38%
 Option 2 |1994-12-30 |575.71 |2018-07-19 |5648.23 |881.1% |0.1017% |17.55%
 SP500 TR |1994-12-30 |575.71 |2018-07-19 |5525.51 |859.8% |0.1007% |18.53%
  
 #### See below for calculation details of the table.
+
+<br />
+<br />
 
 #### Cumulative Total Return
 ```{r}
@@ -222,6 +268,9 @@ SP500 TR |1994-12-30 |575.71 |2018-07-19 |5525.51 |859.8% |0.1007% |18.53%
   tail(SP500TR$SP500, 1) / head(SP500TR$SP500, 1) - 1)
 ```
 
+<br />
+<br />
+
 #### Cumulative Total Return p.a.
 ```{r}
 horizon = as.numeric(tail(INDEX_RAW$DATE, 1) - head(INDEX_RAW$DATE, 1)) / 365
@@ -232,6 +281,9 @@ horizon = as.numeric(tail(INDEX_RAW$DATE, 1) - head(INDEX_RAW$DATE, 1)) / 365
 (cumu_total_return_index_2_pa = (cumu_total_return_index_2 + 1) ** (1 / horizon) - 1)
 (cumu_total_return_SP500TR_pa = (cumu_total_return_SP500TR + 1) ** (1 / horizon) - 1)
 ```
+
+<br />
+<br />
 
 #### Annualised Volatility of Daily Returns
 ```{r}
@@ -248,16 +300,29 @@ annualised_volatility_of_daily_returns(INDEX_2_aligned_with_SP500TR$index_2)
 annualised_volatility_of_daily_returns(SP500TR$SP500)
 ```
 
+<br />
+<br />
+<br />
+
 # Chart the 30d average annualised standard deviation of daily returns for a market capitalization weighted index made of all US stocks in the top quintile of market capitalisation (at each point in time).
+
+<br />
+
+#### Calculated on the index of ***Option 2*** only.
+
+<br />
 
 #### First need to add a threshould for filtering the top quintile.
 ```{r}
-INDEX_2_COUNTED = merge(x = INDEX_RAW, y = number_of_stocks_beginning,
+INDEX_2_COUNTED = merge(x = INDEX_RAW, y = volume_of_stocks_beginning,
                              by = "TICKER", all.x = TRUE) %>% 
-  mutate(market_cap_plus_dividends = PRICE * number_of_stocks) %>% 
+  mutate(market_cap_plus_dividends = PRICE * volume_of_stocks) %>% 
   add_count(DATE) %>% 
   mutate(how_many_in_top_quintile = round(n / 5))
 ```
+
+<br />
+<br />
 
 #### Should achieve the same effect of "Rank() Over Partition By" in SQL.
 ```{r}
@@ -271,6 +336,9 @@ INDEX_2_RANKED = data.table(INDEX_2_COUNTED)[, MARKET_CAP_Rank := frank(- MARKET
 #                                                 FUN = function(x) rank(x, ties.method = "first")))
 ```
 
+<br />
+<br />
+
 #### Filtering and then calculating sum_market_cap_plus_dividends.
 ```{r}
 INDEX_2_TOP_QUINTILE = 
@@ -278,6 +346,9 @@ INDEX_2_TOP_QUINTILE =
   group_by(DATE) %>% 
   summarize(sum_market_cap_plus_dividends = sum(market_cap_plus_dividends))
 ```
+
+<br />
+<br />
 
 #### Edit this function for our need to have a 30 day rolling window.
 ```{r}
@@ -310,4 +381,85 @@ plot(y = annualised_30_days_rolling_volatility_of_daily_returns_result$rolling_v
      main = "Annualised 30 day rolling volatility of daily returns") 
 ```
 
+# If 5% of the portfolio is invested in Microsoft, try to hedge out the risk of downward price movements in the most capital efficient way.
+
+<br />
+
+#### The first way is to buy a put option to give us the right to sell. It will be a prefect hedge, but need to pay an option premium.
+
+<br />
+
+#### The second way is designed to only hedge out a big part of the market risk. It is assumed that we are holding Microsoft because it is expected to grow in the short term, and the specific risk of Microsoft can be ignored. The implementation is to short a basket of stocks that are highly correlated with Microsoft. Therefore, our holding of Microsoft will be exposed to a well reduced amount of market risk. See below for the process of picking out the highly correlated stocks.
+
+<br />
+<br />
+
+#### For each stock, calculate its daily change for the last five years ("five" is arbitrarily picked to represent the recent price movement).
+```{r}
+INDEX_RAW_SPREAD = INDEX_RAW %>%
+  select(- MARKET_CAP) %>% 
+  filter(DATE >= "2013-07-19") %>% 
+  spread(key = TICKER, value = PRICE)
+
+EACH_STOCK_DAILY_CHANGE = INDEX_RAW_SPREAD %>% 
+  arrange(DATE) %>% 
+  select(- DATE) %>% 
+  map(~ ROC(., n = 1, na.pad = TRUE, type = "discrete"))
+```
+
+<br />
+<br />
+
+#### Calculate the Pearson correlation between Microsoft and each other stock.
+```{r}
+EACH_STOCK_CORRELATION_WITH_MSFT = EACH_STOCK_DAILY_CHANGE %>% 
+  map(~ cor(., EACH_STOCK_DAILY_CHANGE$`MSFT-US`, use = "complete.obs", method = "pearson")) %>% 
+  unlist
+```
+
+<br />
+<br />
+
+#### Plot correlation
+```{r}
+hist(EACH_STOCK_CORRELATION_WITH_MSFT, breaks = 50)
+```
+
+<br />
+<br />
+
+#### What do we have here? Google, Intel, PayPal, Intuit, Accenture, Mastercard, Texas Instruments, Honeywell, and Adobe. They are all similar to Microsoft in terms of market capitalisation size and sector. Make sense.
+```{r}
+tail(sort(EACH_STOCK_CORRELATION_WITH_MSFT), 10)
+```
+
+<br />
+<br />
+
+#### Now make a small portfolio for shorting using the nine stocks with equal weighting ("nine" is arbitrarily picked). It is beyond my knowledge how to optimize the weighting.
+```{r}
+SHORT_PORTFOLIO = data.table(
+  `ADBE-US` = EACH_STOCK_DAILY_CHANGE[['ADBE-US']],
+  `HON-US` = EACH_STOCK_DAILY_CHANGE[['HON-US']],
+  `TXN-US` = EACH_STOCK_DAILY_CHANGE[['TXN-US']],
+  `MA-US` = EACH_STOCK_DAILY_CHANGE[['MA-US']],
+  `ACN-US` = EACH_STOCK_DAILY_CHANGE[['ACN-US']],
+  `INTU-US` = EACH_STOCK_DAILY_CHANGE[['INTU-US']],
+  `PYPL-US` = EACH_STOCK_DAILY_CHANGE[['PYPL-US']],
+  `INTC-US` = EACH_STOCK_DAILY_CHANGE[['INTC-US']],
+  `GOOGL-US` = EACH_STOCK_DAILY_CHANGE[['GOOGL-US']]
+)
+```
+
+```{r}
+SHORT_PORTFOLIO$mean = rowMeans(SHORT_PORTFOLIO, na.rm = TRUE, dims = 1)
+```
+
+<br />
+<br />
+
+#### This small portfolio for shorting has a 0.69 correlation with Microsoft.
+```{r}
+cor(EACH_STOCK_DAILY_CHANGE$`MSFT-US`, SHORT_PORTFOLIO$mean, use = "complete.obs", method = "pearson")
+```
 
